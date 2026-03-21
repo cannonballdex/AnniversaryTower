@@ -81,7 +81,7 @@ local function ClickConfirmation(button)
 	-- Look Into:         mq.delay(5000, function() return validatemenu(clicky) end)
 	mq.parse('/delay 10s ${Window[ConfirmationDialogBox].Open}')
 	mq.delay(250)
-	mq.cmd.notify('ConfirmationDialogBox '..button..' leftmouseup')
+	mq.cmd('/notify ConfirmationDialogBox ' .. button .. ' leftmouseup')
 	mq.doevents()
 	::ConfirmWait::
 	mq.delay(5)
@@ -504,10 +504,10 @@ function actions.KillAllBaddiesIfUp2(spawn, distance, forceGroup)
 end
 
 local function CwtnResetCamp()
-    if (mq.TLO.CWTN == nil) then return end
+    if (mq.TLO.Plugin('CWTN') == 'false') then return end
 
     logger.info('\ay Resetting CWTN camp')
-    mq.cmdf('/%s resetcamp', mq.TLO.CWTN.Command())
+    mq.cmdf('/%s resetcamp', mq.TLO.Me.Class.ShortName())
 end
 
 function actions.KillOneMob(spawn_name, distance, force_group)
@@ -771,7 +771,7 @@ function actions.AddCursorItemsToInventory(wait_for_cursor_item)
     end
 
     ::auto_inv_again::
-    mq.cmd.autoinv()
+    mq.cmd('/autoinventory')
     mq.delay(1000, function() return mq.TLO.Cursor.ID() == nil end)
     if (mq.TLO.Cursor.ID() ~= nil) then goto auto_inv_again end
 end

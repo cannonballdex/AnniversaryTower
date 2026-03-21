@@ -36,182 +36,86 @@ end
 
 local function DoSteps(task, steps)
     while (task ~= nil) do
-        if (task.Step == nil or task.Step() == nil) then
-            return true
-        end
-
-        local step_index = task.Step.Index()
-        local callback = steps[step_index]
-        if (callback == nil) then
-            logger.error('No callback defined for task step %s', tostring(step_index))
-            return false
-        end
-
-        local result = DoStep(task, step_index, callback)
-        if (result == false) then
-            logger.error('Task step %s failed', tostring(step_index))
-            return false
-        end
+        if (task.Step == nil or task.Step() == nil) then return true end
+        local callback = steps[task.Step.Index()]
+        DoStep(task, task.Step.Index(), callback)
     end
 
-    return true
-end
-
-local function AcceptRewardSelection()
-    for attempt = 1, 20 do
-        if (mq.TLO.Window('RewardSelectionWnd').Open() == true) then
-            logger.info('Reward window detected, accepting reward (attempt %s)', tostring(attempt))
-
-            mq.cmd('/notify RewardSelectionWnd RewardSelectionChooseButton leftmouseup')
-
-            local closed = mq.delay(2000, function()
-                return mq.TLO.Window('RewardSelectionWnd').Open() ~= true
-            end)
-
-            mq.delay(300)
-            mq_utils.AddCursorItemsToInventory(true)
-            mq.delay(300)
-            mq_utils.AddCursorItemsToInventory(true)
-
-            if closed then
-                return true
-            end
-
-            logger.warning('Reward window click was sent but window did not close on attempt %s', tostring(attempt))
-        end
-
-        mq.delay(500)
-    end
-
-    logger.info('No reward selection window appeared during reward polling window')
-    mq_utils.AddCursorItemsToInventory(true)
-    mq.delay(300)
-    mq_utils.AddCursorItemsToInventory(true)
     return true
 end
 
 local function DoCombine(key_task_details)
-    local function FindContainer()
-        return mq.TLO.FindItem(key_task_details.container_id)
-    end
-
-    local function GetPackSlot(container)
-        if (container() == nil or container.ID() == nil) then
-            return nil, nil
-        end
-
-        local item_slot = container.ItemSlot()
-        if (item_slot == nil) then
-            return nil, nil
-        end
-
-        return item_slot, item_slot - 22
-    end
-
-    local function EnsurePackWindowOpen(pack)
-        local window_name = 'Pack' .. tostring(pack)
-
-        mq_utils.OpenWindow('InventoryWindow', 'Inventory')
-        mq.delay(500)
-
-        if (mq.TLO.Window(window_name).Open() == true) then
-            logger.info('Combine container window %s already open.', window_name)
-            return true
-        end
-
-        for attempt = 1, 6 do
-            mq_utils.OpenWindow('InventoryWindow', 'Inventory')
-            mq.delay(300)
-
-            logger.info('Opening combine container in pack slot %s (attempt %s)', tostring(pack), tostring(attempt))
-            mq.cmdf('/itemnotify pack%s rightmouseup', pack)
-
-            mq.delay(200)
-            local immediate_state = mq.TLO.Window(window_name).Open()
-            logger.info('Immediate %s open state after click: %s', window_name, tostring(immediate_state))
-
-            mq.delay(500)
-            local short_state = mq.TLO.Window(window_name).Open()
-            logger.info('500ms %s open state after click: %s', window_name, tostring(short_state))
-
-            mq.delay(1000)
-            local settle_state = mq.TLO.Window(window_name).Open()
-            logger.info('1500ms %s open state after click: %s', window_name, tostring(settle_state))
-
-            if (settle_state == true) then
-                return true
-            end
-
-            mq.delay(500)
-        end
-
-        return false
-    end
-
-    mq_utils.AddCursorItemsToInventory(true)
-    mq.delay(200)
-
-    local container = FindContainer()
-    if (container() == nil or container.ID() == nil) then
+    local container = mq.TLO.FindItem(key_task_details.container_id)
+    if (container() == nil) then
         logger.error('Combine failed: container not found')
         return false
     end
 
-    local item_slot, pack = GetPackSlot(container)
+    local item_slot = container.ItemSlot()
     if (item_slot == nil) then
         logger.error('Combine failed: container has no ItemSlot')
         return false
     end
 
-    if (pack < 1 or pack > 10) then
-        logger.error('Combine failed: container is not in a top-level inventory slot. ItemSlot=%s Pack=%s', tostring(item_slot), tostring(pack))
-        return false
-    end
+    local pack = item_slot - 22
+    local window_name = 'Pack' .. tostring(pack)
 
-    logger.info(
-        'Combine container debug: name=%s id=%s itemslot=%s pack=%s',
-        tostring(container.Name()),
-        tostring(container.ID()),
-        tostring(item_slot),
-        tostring(pack)
-    )
+    mq_utils.AddCursorItemsToInventory(true)
+    mq.delay(1000)
 
-    if not EnsurePackWindowOpen(pack) then
-        logger.error('Combine failed: pack window Pack%s did not open', tostring(pack))
-        return false
-    end
+    if (mq.TLO.Window(window_name).Open() ~= true) then
+        logger.info('Right-clicking combine container in top-level slot pack%s', tostring(pack))
+        mq.cmdf('/itemnotify pack%s rightmouseup', pack)
 
-    mq_utils.AddItemToPack(key_task_details.item1_blade_id, pack, 1)
-    mq.delay(300)
-    mq_utils.AddItemToPack(key_task_details.item2_bow_id, pack, 2)
-    mq.delay(300)
-    mq_utils.AddItemToPack(key_task_details.item3_biting_id, pack, 3)
-    mq.delay(300)
+        local opened = mq.delay(3000, function()
+            return mq.TLO.Window(window_name).Open() == true
+        end)
 
-    if (key_task_details.additional_item_ids ~= nil) then
-        local pack_slot = 4
-        for _, additional_item_id in ipairs(key_task_details.additional_item_ids) do
-            mq_utils.AddItemToPack(additional_item_id, pack, pack_slot)
-            mq.delay(300)
-            pack_slot = pack_slot + 1
+        if (opened ~= true) then
+            logger.error('Combine failed: container window %s did not open', window_name)
+            return false
         end
     end
 
-    mq_utils.CombinePack(pack)
-    logger.info('Combine completed for pack %s, waiting for reward handling', tostring(pack))
+    mq_utils.AddItemToPack(key_task_details.item1_blade_id, pack, 1)
+    mq.delay(1000)
+    mq_utils.AddItemToPack(key_task_details.item2_bow_id, pack, 2)
+    mq.delay(1000)
+    mq_utils.AddItemToPack(key_task_details.item3_biting_id, pack, 3)
     mq.delay(1000)
 
-    if not AcceptRewardSelection() then
-        logger.error('Combine succeeded but reward selection failed')
-        return false
+    mq_utils.CombinePack(pack)
+    logger.info('Combine clicked for pack %s, waiting for reward window', tostring(pack))
+
+    mq.delay(5000)
+
+    if mq.TLO.Window('RewardSelectionWnd').Open() == true then
+        logger.info('Reward window detected, claiming reward')
+        mq.cmd('/notify RewardSelectionWnd RewardSelectionChooseButton leftmouseup')
+
+        mq.delay(2000, function()
+            return mq.TLO.Window('RewardSelectionWnd').Open() ~= true
+        end)
+
+        mq.delay(1000)
+        mq_utils.AddCursorItemsToInventory(true)
+        mq.delay(1000)
+        mq_utils.AddCursorItemsToInventory(true)
+    else
+        mq.cmd('/notify RewardSelectionWnd RewardSelectionChooseButton leftmouseup')
+        logger.warning('No reward selection window appeared after combine')
+        mq_utils.AddCursorItemsToInventory(true)
+        mq.delay(1000)
+        mq_utils.AddCursorItemsToInventory(true)
     end
 
     return true
 end
 
+
 local check_and_loot_all = function(items)
     local missing_item = false
-    for _, item in pairs(items) do
+    for _,item in pairs(items) do
         if (mq.TLO.FindItemCount(item)() == 0) then
             if (mq_utils.LootItemById(item) == false) then
                 missing_item = true
@@ -254,15 +158,16 @@ local function Task_KeyOfLava(task, level)
 
         ::find_next::
         mq.cmd('/nav spawn magma rockpile |dist=10')
-        while mq.TLO.Navigation.Active() do mq.delay(100) end
+        while mq.TLO.Navigation.Active() do mq.delay(500) end
 
         local rockpile = mq.TLO.Spawn('magma rockpile')
 
+        -- This makes sure we didn't stop half-way, or someone else stole that particular rock pile
         if (rockpile == nil or rockpile.Distance() > 20) then goto find_next end
 
         mq.cmdf('/target id %s', rockpile.ID())
-        while (mq.TLO.Target.ID() ~= rockpile.ID()) do
-            mq.delay(100)
+        while( mq.TLO.Target.ID() ~= rockpile.ID()) do
+            mq.delay(500)
         end
 
         logger.info('Digging into rockpile')
@@ -273,7 +178,7 @@ local function Task_KeyOfLava(task, level)
             mq.delay(5000, function() return mq.TLO.SpawnCount('npc magma basilisk scavenger radius 40')() ~= 0 end)
             mq_utils.KillOneMob('magma basilisk scavenger', 40)
 
-            mq.delay(200)
+            mq.delay(500)
 
             mq_utils.KillAllOnXtarget()
             check_and_loot_all_task_items(task_item_details)
@@ -293,7 +198,7 @@ end
 
 local function Task_KeyOfForests(task, level)
     local kill_next = function(o, key_task_details, spawn_name)
-        while (mq_utils.ObjectiveComplete(o) == false) do
+        while(mq_utils.ObjectiveComplete(o) == false) do
             check_and_loot_all_task_items(key_task_details)
             if (mq_utils.ObjectiveComplete(o)) then return end
 
@@ -327,30 +232,24 @@ local function Task_KeyOfFrost(task, level)
     }
 
     local surface_kill_mob = function(spawn_name)
-        local spawn = mq.TLO.Spawn('npc ' .. spawn_name)
-        if (spawn.ID() == nil) then
-            logger.warning('No %s found.', spawn_name)
-            return false
-        end
+        local spawn = mq.TLO.Spawn('npc '..spawn_name)
+        if (spawn.ID() == nil) then printf('\arNo \at %s found.', spawn_name) end
 
         ::nav_closer::
         mq.cmdf('/nav locxy %s %s', spawn.X(), spawn.Y())
-        while (mq.TLO.Navigation.Active()) do mq.delay(50) end
+        while(mq.TLO.Navigation.Active()) do mq.delay(500) end
 
-        if (spawn.Type() ~= "NPC") then
-            logger.warning('%s died before engagement.', spawn_name)
-            return false
-        end
+        if (spawn.Type() ~= "NPC") then printf('\at Poor fish died already.') end
 
+        -- if (spawn.Distance() > 50) then goto nav_closer end
         mq.cmdf('/target id %d', spawn.ID())
-        mq.delay(1000, function() return mq.TLO.Target.ID() == spawn.ID() end)
-
-        mq.cmd('/pet attack')
-        while (spawn.Type() == "NPC") do
-            mq.delay(100)
+        mq.delay(1000, function() return mq.TLO.Target.ID() ~= nil end)
+        if mq.TLO.Me.Pet() then
+            mq.cmd('/pet attack')
         end
-
-        return true
+        while(spawn.Type() == "NPC") do
+            mq.delay(500)
+        end
     end
 
     local frost_kill_fish = function(spawn_name)
@@ -374,17 +273,18 @@ local function Task_KeyOfFrost(task, level)
         mq.delay(3000)
         mq.cmd('/keypress forward')
         mq.cmd('/nav spawn frost-covered')
-        while mq.TLO.Navigation.Active() do mq.delay(1) end
+        while mq.TLO.Navigation.Active() do mq.delay(500) end
         mq.cmd('/nav spawn polar')
-        while mq.TLO.Navigation.Active() do mq.delay(1) end
+        while mq.TLO.Navigation.Active() do mq.delay(500) end
         mq.cmd('/nav spawn deepwater')
-        while mq.TLO.Navigation.Active() do mq.delay(1) end
+        while mq.TLO.Navigation.Active() do mq.delay(500) end
+
 
         if (mq.TLO.Me.Underwater() == false) then
             SetStatus("Cannot enter the Ice Hole.  Please help...")
             mq.cmd('/beep')
             mq.cmd('/beep')
-            while (mq.TLO.Me.Underwater() == false) do
+            while( mq.TLO.Me.Underwater() == false) do
                 mq.delay(1000, function() return mq.TLO.Me.Underwater() end)
             end
             SetStatus('')
@@ -415,7 +315,7 @@ local function Task_KeyOfFrost(task, level)
             logger.warning('Cannot leave ice hole.  Please help guide character out.')
             mq.cmd('/beep')
             mq.cmd('/beep')
-            while (InIceHole() == true) do
+            while( InIceHole() == true ) do
                 mq.delay(1000, function() return mq.TLO.Me.Underwater() == false end)
             end
             SetStatus('')
@@ -423,22 +323,18 @@ local function Task_KeyOfFrost(task, level)
     end
 
     local do_ice_step = function(spawn_name, objective)
+        --if (mq.TLO.Me.Pet.ID() == 0) then swim_into_icehole() end
         swim_into_icehole()
-
-        while mq_utils.ObjectiveComplete(objective) == false do
-            check_and_loot_all(items)
-            frost_kill_fish(spawn_name)
-            mq.delay(1000)
-            check_and_loot_all(items)
-            mq_utils.KillAllOnXtarget()
-            mq.delay(250)
-        end
-
+        check_and_loot_all(items)
+        surface_kill_mob(spawn_name)
+        if (objective.Status() == "Done") then return end
+        frost_kill_fish(spawn_name)
         check_and_loot_all(items)
     end
 
     local steps = {
-        function()
+        function() 
+            --if (mq.TLO.Me.Pet.ID() == 0) then swim_into_icehole() end
             swim_into_icehole()
         end,
         function(objective) do_ice_step("a frost-covered cod", objective) end,
@@ -494,8 +390,15 @@ local function Task_KeyOfSky(task, level)
         function() mq_utils.MoveToLoc('2313.00 932.25 -28.48') end,
         function() mq_utils.MoveToLoc('2195.00 922 -26.38') end,
 
-        function() mq_utils.KillOneMob("gnoll troublemaker", 50) end,
-        function() mq_utils.LootItemById(key_task_details.item3_biting_id) end,
+        function()
+            mq_utils.KillOneMob("gnoll troublemaker", 50)
+            mq.delay(2000)
+            mq_utils.LootItemById(key_task_details.item3_biting_id)
+            mq.delay(1000)
+            if (mq.TLO.FindItemCount(key_task_details.item3_biting_id)() == 0) then
+                mq_utils.LootItemById(key_task_details.item3_biting_id)
+            end
+        end,
 
         function() DoCombine(key_task_details) end,
     }
@@ -506,11 +409,11 @@ end
 local function Task_KeyOfSteam(task, level)
     local key_task_details = level.key.task
     local steps = {
-        function()
+        function() 
             mq_utils.MoveToLoc('1595.93 1689.28 14.01')
             mq_utils.GetGroundSpawn('Drop12537', 100, true)
         end,
-        function()
+        function() 
             mq_utils.MoveToLoc('-320.51 1486.21 4.88')
             mq_utils.GetGroundSpawn('Drop12537', 100, true)
         end,
@@ -525,36 +428,19 @@ end
 
 local function Task_KeyOfJungle(task, level)
     local key_task_details = level.key.task
-
-    local function still_missing_task_items()
-        return check_and_loot_all_task_items(key_task_details)
-    end
-
-    local function open_chest_and_loot()
-        if not still_missing_task_items() then
-            logger.info('All Jungle key items already collected.')
-            return true
-        end
+    local open_chest_and_loot = function(key_task_details)
+        if (check_and_loot_all_task_items(key_task_details) == false) then return end
 
         mq_utils.MoveToAndOpen('a broken chest')
-        mq.delay(500)
-        mq_utils.AddCursorItemsToInventory(true)
-        mq.delay(300)
 
-        if not still_missing_task_items() then
-            logger.info('Collected missing Jungle key item(s) after opening chest.')
-            return true
-        end
-
-        logger.info('Still missing Jungle key item(s); chest attempt did not complete objective.')
-        return false
+        if (check_and_loot_all_task_items(key_task_details) == false) then return end
     end
 
     local steps = {
-        function() return open_chest_and_loot() end,
-        function() return open_chest_and_loot() end,
-        function() return open_chest_and_loot() end,
-        function() return DoCombine(key_task_details) end,
+        function() open_chest_and_loot(key_task_details) end,
+        function() open_chest_and_loot(key_task_details) end,
+        function() open_chest_and_loot(key_task_details) end,
+        function() DoCombine(key_task_details) end,
     }
 
     return DoSteps(task, steps)
@@ -563,6 +449,7 @@ end
 local function Task_KeyOfFire(task, level)
     local key_task_details = level.key.task
     local steps = {
+        -- First
         function() mq_utils.MoveToSpawnName('disturbed_nest02') end,
         function()
             mq_utils.MoveToSpawnName('disturbed_nest02')
@@ -570,13 +457,14 @@ local function Task_KeyOfFire(task, level)
         end,
         function() mq_utils.MoveToSpawnName('disturbed_nest02') end,
         function(objective)
-            mq_utils.MoveToSpawnName('disturbed_nest02')
-            while (mq_utils.ObjectiveComplete(objective) == false) do
-                mq_utils.KillOneMob("an enraged wyvern")
-                mq.delay(100)
-            end
+                mq_utils.MoveToSpawnName('disturbed_nest02')
+                while(mq_utils.ObjectiveComplete(objective) == false) do
+                    mq_utils.KillOneMob("an enraged wyvern")
+                    mq.delay(500)
+                end
         end,
         function() mq_utils.LootItemById(key_task_details.item1_blade_id) end,
+        -- Second
         function() mq_utils.MoveToSpawnName('disturbed_nest01') end,
         function()
             mq_utils.MoveToSpawnName('disturbed_nest01')
@@ -585,12 +473,13 @@ local function Task_KeyOfFire(task, level)
         function() mq_utils.MoveToSpawnName('disturbed_nest01') end,
         function(objective)
             mq_utils.MoveToSpawnName('disturbed_nest01')
-            while (mq_utils.ObjectiveComplete(objective) == false) do
+            while(mq_utils.ObjectiveComplete(objective) == false) do
                 mq_utils.KillAllBaddiesIfUp("an enraged wyvern")
-                mq.delay(100)
+                mq.delay(500)
             end
         end,
         function() mq_utils.LootItemById(key_task_details.item2_bow_id) end,
+        -- Third
         function() mq_utils.MoveToSpawnName('disturbed_nest00') end,
         function()
             mq_utils.MoveToSpawnName('disturbed_nest00')
@@ -599,12 +488,14 @@ local function Task_KeyOfFire(task, level)
         function() mq_utils.MoveToSpawnName('disturbed_nest00') end,
         function(objective)
             mq_utils.MoveToSpawnName('disturbed_nest00')
-            while (mq_utils.ObjectiveComplete(objective) == false) do
+            while(mq_utils.ObjectiveComplete(objective) == false) do
                 mq_utils.KillAllBaddiesIfUp("an enraged wyvern")
-                mq.delay(100)
+                mq.delay(500)
             end
         end,
         function() mq_utils.LootItemById(key_task_details.item3_biting_id) end,
+
+        -- End
         function() DoCombine(key_task_details) end,
     }
 
@@ -628,12 +519,15 @@ local function Task_KeyOfSwamps(task, level)
 
         ::target_again::
         egg_spawn.DoTarget()
-        if (mq.TLO.Target.ID() ~= egg_spawn.ID()) then mq.delay(100) goto target_again end
+        if (mq.TLO.Target.ID() ~= egg_spawn.ID()) then mq.delay(500) goto target_again end
 
         mq.cmd('/face')
-        mq.delay(100)
+        mq.delay(500)
         mq.cmd('/attack on')
-        mq.delay(100)
+        mq.delay(500)
+        if mq.TLO.Me.Pet() then
+            mq.cmd('/pet attack')
+        end
 
         mq_utils.KillAllBaddiesIfUp("swamp leech broodmother", 500)
         mq_utils.AddCursorItemsToInventory()
@@ -662,7 +556,7 @@ local function Task_KeyOfFear(task, level)
         logger.info('\ay Spawn seen: \ay Following')
         mq_utils.FollowSpawn(o, spawn_name, 30)
         logger.info('\ay Spawn: \ay Done following')
-    end
+end
 
     local steps = {
         function() mq_utils.MoveToLocXy('2335 970') end,
@@ -690,9 +584,10 @@ local function Task_KeyOfFear(task, level)
     return DoSteps(task, steps)
 end
 
+
 local function Task_KeyOfVoid(task, level)
     local rift_hunt = function(o)
-        while (mq_utils.ObjectiveComplete(o) == false) do
+        while(mq_utils.ObjectiveComplete(o) == false) do
             mq_utils.KillOneMob('rift', 5000, true)
             mq_utils.KillAllBaddiesIfUp("a discordant golem", 200)
             mq_utils.KillAllBaddiesIfUp("a discordant dragorn invader", 200)
@@ -714,32 +609,33 @@ local function Task_KeyOfVoid(task, level)
 end
 
 local function Task_KeyOfDragons(task, level)
+
     local inspect_altar = function(altar)
-        mq_utils.MoveToSpawnName(altar, true)
+        mq_utils.MoveToSpawnName(altar)
         mq.cmdf('/nav spawn %s', altar)
-        while mq.TLO.Navigation.Active() do mq.delay(100) end
+        while mq.TLO.Me.Moving() do mq.delay(500) end
         mq.cmdf('/squelch /target %s', altar)
         mq.delay(500)
         mq.cmd('/inspect')
-        mq.delay(1000)
     end
 
-    local kill_things = function(o)
-        while (mq_utils.ObjectiveComplete(o) == false) do
+    local kill_things = function(o, altar)
+        inspect_altar(altar)
+        while(mq_utils.ObjectiveComplete(o) == false) do
             mq_utils.KillOneMob("an inferno goblin ritualist")
             mq_utils.KillAllOnXtarget()
-            mq.delay(100)
+            mq.delay(500)
         end
-    end
+end
 
     local key_task_details = level.key.task
     local steps = {
         function(_) inspect_altar('smoldering_dragon_altar00') end,
-        function(o) kill_things(o) end,
+        function(o) kill_things(o, 'an inferno goblin ritualist') end,
         function(_) inspect_altar('burning_dragon_altar00') end,
-        function(o) kill_things(o) end,
+        function(o) kill_things(o, 'an inferno goblin ritualist') end,
         function(_) inspect_altar('searing_dragon_altar00') end,
-        function(o) kill_things(o) end,
+        function(o) kill_things(o, 'an inferno goblin ritualist') end,
         function() DoCombine(key_task_details) end,
     }
 
@@ -755,40 +651,19 @@ local function DestroyInventoryItem(item_id)
     mq.delay(2000, function() return not mq.TLO.Cursor.ID() end)
 end
 
-local function HasAllTaskCombineItems(task_details)
-    if (mq.TLO.FindItemCount(task_details.item1_blade_id)() == 0) then return false end
-    if (mq.TLO.FindItemCount(task_details.item2_bow_id)() == 0) then return false end
-    if (mq.TLO.FindItemCount(task_details.item3_biting_id)() == 0) then return false end
-
-    if (task_details.additional_item_ids ~= nil) then
-        for _, additional_id in pairs(task_details.additional_item_ids) do
-            if (mq.TLO.FindItemCount(additional_id)() == 0) then
-                return false
-            end
-        end
-    end
-
-    return true
-end
-
 local function CleanupInventory(level)
-    if (HasAllTaskCombineItems(level.key.task)) then
-        logger.info('Preserving existing combine items for task: %s', level.key.task.name)
-        return
-    end
-
     if (level.key.task.additional_item_ids ~= nil) then
-        for _, additional_id in pairs(level.key.task.additional_item_ids) do
+        for _,additional_id in pairs(level.key.task.additional_item_ids) do
             DestroyInventoryItem(additional_id)
         end
     end
-
     DestroyInventoryItem(level.key.task.item1_blade_id)
     DestroyInventoryItem(level.key.task.item2_bow_id)
     DestroyInventoryItem(level.key.task.item3_biting_id)
     DestroyInventoryItem(level.key.task.container_id)
 end
 
+-- If we're not in North/South Ro, try to use the "Northern Desert Outlook Device", if we have it
 local function travel_to_tower()
     local current_zone = mq.TLO.Zone.ShortName()
     if (current_zone == 'anniversarytower') then return end
@@ -805,10 +680,12 @@ local function travel_to_tower()
             logger.debug('Cannot activate North Ro Outlook device')
         end
 
+        -- Zueria Slide
         local zueria = mq.TLO.FindItem('Zueria Slide')
 
         if (zueria.ID() == nil) then goto finish_travel end
 
+        -- /relocate cannot change the item type when in keyring
         if (zueria.ID() ~= 146385 and zueria.ItemSlot() < 23) then
             logger.warning('Zueria Slide not set to North Ro.  Cannot change while in keyring. Not using.')
             goto finish_travel
@@ -820,11 +697,12 @@ local function travel_to_tower()
         if (zueria.ID() ~= 146385) then
             zueria = mq.TLO.FindItem(146385)
             if (zueria.ID() ~= 146385) then
+                -- WHERE are we going?!
                 logger.warning('Incorrect Zuria Slide situation.')
                 return
             end
         end
-        mq.delay(zueria.CastTime() + 100, function() return (mq.TLO.Me.CastTimeLeft() == 0 or zueria.TimerReady() > 0) end)
+        mq.delay(zueria.CastTime()+100, function() return (mq.TLO.Me.CastTimeLeft() == 0 or zueria.TimerReady() > 0) end)
         logger.info('Clicked Zueria slide... waiting for zone.')
         mq_utils.WaitForZone()
         goto finish_travel
@@ -837,15 +715,15 @@ end
 
 local function travel_to_nontower_zone(zone_name)
     if (zone_name == 'northro' or zone_name == 'southro') then goto finish_travel end
-
+    
     if (Settings.general.UseGateSpell and mq.TLO.Me.AltAbility(1217)() ~= nil) then
         local gate_aa = mq.TLO.Me.AltAbility(1217)
-        while (mq.TLO.Me.AltAbilityReady(1217) == false) do
-            mq.delay(100)
+        while(mq.TLO.Me.AltAbilityReady(1217) == false) do
+            mq.delay(500)
         end
 
         mq.cmdf('/alt act %s', mq.TLO.Me.AltAbility(1217))
-        mq.delay(gate_aa.Spell.CastTime() + 1000, function() return (mq.TLO.Me.CastTimeLeft() == 0 or mq.TLO.Me.AltAbilityReady(1217) == false) end)
+        mq.delay(gate_aa.Spell.CastTime()+1000, function() return (mq.TLO.Me.CastTimeLeft() == 0 or mq.TLO.Me.AltAbilityReady(1217) == false) end)
         mq_utils.WaitForZone()
         goto finish_travel
     end
@@ -857,15 +735,28 @@ local function travel_to_nontower_zone(zone_name)
         goto finish_travel
     end
 
+    -- if (Settings.general.UsePoKPortClicky and zone_name ~= 'poknowledge') then
+
+    -- end
+
     ::finish_travel::
     if (mq.TLO.Zone.ShortName() == 'anniversarytower') then
         tower.MoveToLevel(1)
     end
-
+    if mq.TLO.Lua.Script('rgmercs').Status() == "RUNNING" then
+        mq.cmd('/rgl pause')
+    end
     mq_utils.TravelTo(zone_name)
+    mq.delay(1000, function() return mq.TLO.Zone.ShortName() == zone_name end)
+    if mq.TLO.Lua.Script('overseer').Status() == "RUNNING" then
+        mq.cmd('/rgl unpause')
+    end
 end
 
 function actions.AcquireTask(level, silent)
+    if mq.TLO.Lua.Script('overseer').Status() == "RUNNING" then
+        mq.cmd('/rgl pause')
+    end
     if (silent == nil) then silent = false end
     local current_task = mq.TLO.Task(level.key.task.name)
     if (current_task ~= nil and current_task() ~= nil) then
@@ -879,6 +770,7 @@ function actions.AcquireTask(level, silent)
         SetStatus('Acquiring quest-requestor for %s', level.key.task.name)
     end
 
+    -- If we have the container, needs to be deleted
     CleanupInventory(level)
 
     local key_task_ground_item = mq.TLO.FindItem(level.key.task.request_item_id)
@@ -886,27 +778,49 @@ function actions.AcquireTask(level, silent)
         logger.info('Traveling to get quest item initiator for \at%s', level.key.task.name)
         travel_to_tower()
         tower.MoveToLevel(level.level)
-        mq_utils.GetGroundSpawn('Drop12537', 100, true)
+
+        while (mq_utils.GetGroundSpawn('Drop12537', 35, true) == false) do
+            logger.info('Waiting for quest item ground spawn for %s', level.key.task.name)
+            mq.delay(1000)
+        end
+
+        repeat
+            mq_utils.AddCursorItemsToInventory(true)
+            mq.delay(2500)
+            key_task_ground_item = mq.TLO.FindItem(level.key.task.request_item_id)
+        until (key_task_ground_item() ~= nil)
+    end
+
+    local clicked = false
+    for _ = 1, 25 do
+        key_task_ground_item = mq.TLO.FindItem(level.key.task.request_item_id)
+        if (key_task_ground_item() == nil) then
+            logger.error('Quest initiator item disappeared before click: %s', level.key.task.name)
+            return nil
+        end
+
+        logger.info('Right-clicking quest initiator: %s', key_task_ground_item.Name())
+        mq.cmdf('/itemnotify "%s" rightmouseup', key_task_ground_item.Name())
 
         mq_utils.AddCursorItemsToInventory(true)
-        key_task_ground_item = mq.TLO.FindItem(level.key.task.request_item_id)
-    end
+        mq.delay(2500)
+        mq_utils.AddCursorItemsToInventory(true)
 
-    mq.cmdf('/shift /itemnotify "%s" rightmouseup', key_task_ground_item.Name())
-    mq_utils.AddCursorItemsToInventory(true)
-
-    if level.key.task.name == 'Broken Key of Lava' then
-        mq.delay(300)
-        local cursor_name = mq.TLO.Cursor.Name()
-        if cursor_name ~= nil and string.lower(cursor_name) == 'shaledig shovel' then
-            mq.cmd('/autoinv')
-            mq.delay(300)
+        if mq.delay(2000, function() return mq.TLO.Task(level.key.task.name).ID() ~= nil end) then
+            clicked = true
+            break
         end
+
+        mq.delay(2500)
     end
 
-    mq.delay(5000, function() return mq.TLO.Task(level.key.task.name).ID() ~= nil end)
+    if not clicked then
+        logger.error('Unable to start task from quest initiator: %s', level.key.task.name)
+        return nil
+    end
+
     current_task = mq.TLO.Task(level.key.task.name)
-    if (current_task() == nil) then
+    if current_task == nil then
         logger.error('Unable to acquire task for some reason: %s', level.key.task.name)
     end
 
@@ -916,42 +830,31 @@ end
 function actions.RunKeyTask(level, refresh_all_delegate, part_of_set)
     if (level.key.task.task_delegate == nil) then
         logger.error('No Key Task Script Specified for: %s', level.key.task.name)
-        return false
+        return
     end
 
     local task = actions.AcquireTask(level)
     if (task == nil) then
         logger.error('Unable to request task for: %s', level.key.task.name)
         SetStatus('Unable to request task for: %s', level.key.task.name)
-        return false
+        return
     end
 
     SetStatus('Running %s', level.key.task.name)
 
+    -- Move the container for this task to a top-level slot
     local task_container = mq.TLO.FindItem(level.key.task.container_id)
-    if (task_container() == nil or task_container.ID() == nil) then
+    if (task_container() == nil) then
         logger.error('Expected task container not found: %s', level.key.task.name)
-        return false
-    end
-
-    local move_item_result, moved_item = mq_utils.MoveItemToTopLevelSlot(task_container)
-    if (move_item_result ~= true) then
-        logger.error('Failed to move task container to top-level slot: %s', level.key.task.name)
-        return false
-    end
-
-    mq.delay(1000)
-    mq_utils.AddCursorItemsToInventory(true)
-    mq.delay(300)
-
-    task_container = mq.TLO.FindItem(level.key.task.container_id)
-    if (task_container() == nil or task_container.ID() == nil) then
-        logger.error('Task container disappeared after move: %s', level.key.task.name)
-        return false
+        return
     end
 
     level.key.task.container_name = task_container.Name()
 
+    -- TODO: Store this away to survive restarts... if possible.
+    local move_item_result, moved_item = mq_utils.MoveItemToTopLevelSlot(task_container)
+
+    -- TODO: Add flag to turn this option off
     mq.cmd('/cleanup')
     mq.delay(200)
     mq.cmd('/cleanup')
@@ -962,30 +865,7 @@ function actions.RunKeyTask(level, refresh_all_delegate, part_of_set)
         travel_to_nontower_zone(level.key.task.zone)
     end
 
-    local ok = level.key.task.task_delegate(task, level)
-
-    local updated_task = mq.TLO.Task(level.key.task.name)
-    local task_complete = false
-
-    if ok == true then
-        if (updated_task == nil or updated_task() == nil) then
-            task_complete = true
-        elseif (updated_task.Step == nil or updated_task.Step() == nil) then
-            task_complete = true
-        end
-    end
-
-    if not task_complete then
-        logger.error('Task did not complete successfully: %s', level.key.task.name)
-        SetStatus('Task failed or did not complete: %s', level.key.task.name)
-
-        if (move_item_result == true and moved_item ~= nil) then
-            logger.info('Returning item after failed task: %s', moved_item.Name())
-            mq_utils.MoveItemToTopLevelSlot(moved_item)
-        end
-
-        return false
-    end
+    level.key.task.task_delegate(task, level)
 
     level.key.task.selected = false
 
@@ -1001,8 +881,6 @@ function actions.RunKeyTask(level, refresh_all_delegate, part_of_set)
         logger.info('Returning item to top-level slot: %s', moved_item.Name())
         mq_utils.MoveItemToTopLevelSlot(moved_item)
     end
-
-    return true
 end
 
 function actions.RunSelectedKeyTasks(refresh_all_delegate)
@@ -1022,6 +900,9 @@ function actions.RunSelectedKeyTasks(refresh_all_delegate)
 
     if (Settings.key_tasks.returnToTowerWhenDone) then
         travel_to_tower()
+    end
+    if mq.TLO.Lua.Script('overseer').Status() == "RUNNING" then
+        mq.cmd('/rgl unpause')
     end
 end
 
@@ -1047,6 +928,7 @@ function actions.Initialize(set_status_method)
             level.key.task_item = mq.TLO.Task(level.key.task.name)
         end
     end
+
 end
 
 return actions

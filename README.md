@@ -1,352 +1,293 @@
-# AnniversaryTower
+# TowerMissions.lua
 
-**Version:** 1.29
-**Platform:** MacroQuest (MQNext) + Lua
-**Author:** You (maintained / extended)
+Automation script for handling Anniversary Tower key tasks using MacroQuest (MQ).
 
 ---
 
 ## Overview
 
-`AnniversaryTower` automates:
+`TowerMissions.lua` automates the process of:
 
-* Anniversary Tower **missions**
-* Anniversary Tower **key tasks**
-* Travel between tower levels and zones
-* Item collection, combines, and reward handling
+* Acquiring key tasks
+* Traveling to required zones
+* Completing task objectives
+* Combining key fragments into repaired keys
+* Handling post-combine rewards
+* Cleaning up inventory
 
-It is designed for **fully automated group play** using MQ tools like:
+It supports all tower key tasks and integrates with utility modules such as:
 
-* RGMercs
-* KissAssist
-* CWTN
-* MQ2Boxr
+* `mq_utils`
+* `lua_utils`
+* `tower_travel`
+* `logger`
 
 ---
 
 ## Features
 
-### Missions
+### Task Automation
 
-* Automatically requests, runs, and completes all tower missions
-* Handles navigation, combat, and objective logic
-* Supports all floors (2–13)
+* Automatically acquires tasks if not already active
+* Executes task steps sequentially
+* Handles combat, looting, navigation, and interactions
 
-### Key Tasks
+### Combine Handling
 
-* Acquires key quests
-* Collects required items
-* Combines keys automatically
-* Handles reward windows (auto-accept)
-
-### Automation Integration
-
-Supports:
-
-* `rgmercs`
-* `kissassist`
-* `cwtn`
-* `mq2boxr`
-
-### Travel System
-
-* Smart tower navigation
-* Optional clicky usage:
-
-  * North Ro port
-  * PoK port
-  * Gate AA
-* Group synchronization
-
----
-
-## Folder Structure
-
-```
-MQNext/
- └── lua/
-     └── anniversarytower/
-         ├── init.lua
-         ├── engine.lua
-         ├── key_tasks.lua
-         ├── tower_travel.lua
-         └── ...
-```
-
-### Config Location
-
-```
-C:\MQNext\Config\AnniversaryTower\
-    AnniversaryTower_<Character>.ini
-```
-
-⚠️ The folder must exist or be created at runtime.
-
----
-
-## First Run
-
-1. Load MacroQuest
-2. Run:
-
-```
-/lua run anniversarytower
-```
-
-3. The script will:
-
-   * Initialize UI
-   * Create config file
-   * Scan achievements and keys
-
----
-
-## Commands
-
-### Main Command
-
-```
-/tower
-```
-
-### Usage
-
-```
-/tower mission <floor>
-/tower key <floor>
-```
-
-### Examples
-
-```
-/tower mission 8
-/tower key jungle
-/tower mission dragons
-```
-
----
-
-## Configuration
-
-Settings are stored per-character:
-
-```
-AnniversaryTower_<Character>.ini
-```
-
-### Key Sections
-
-#### General
-
-```ini
-[general]
-MessagingType=dannet
-UseMageCoth=true
-UseNroPortClicky=true
-UsePoKPortClicky=true
-UseGateSpell=true
-```
-
-#### Missions
-
-```ini
-[missions]
-frost_UseLevitation=false
-steam_UseLevitation=false
-jungle_KillBarrels=true
-```
-
-#### Key Tasks
-
-```ini
-[key_tasks]
-returnToTowerWhenDone=true
-getAllTasksUpFront=true
-```
-
-#### Automation
-
-```ini
-[automation]
-rgmercs=true
-kissassist=false
-cwtn=false
-boxr=false
-```
-
----
-
-## Known Behavior
-
-### Combine System
-
-* Uses `/itemnotify packX rightmouseup`
-* Waits for `PackX` window open state
-* Inserts items into container
+* Moves key container to a top-level inventory slot
+* Opens the correct pack reliably
+* Adds required items into the container
 * Executes combine
-* Attempts reward collection
+* Handles reward collection
 
 ### Reward Handling
 
-* Uses:
+* Detects `RewardSelectionWnd`
+* Clicks reward button when present
+* Falls back to cursor/inventory sweep
+* Handles delayed reward window appearance
 
-```
-/notify RewardSelectionWnd RewardSelectionChooseButton leftmouseup
-```
+### Inventory Management
 
-* Falls back to:
-
-  * Cursor cleanup
-  * Inventory recovery
-
----
-
-## Known Issues
-
-### 1. Reward Window Stacking
-
-* Multiple reward windows may accumulate
-* Happens when:
-
-  * UI lag
-  * missed detection timing
-
-**Symptom:**
-
-* Rewards pile up (10+ windows)
+* Cleans up leftover items
+* Moves items between inventory and packs
+* Prevents cursor clutter
 
 ---
 
-### 2. Pack Window Behavior
+## Key Components
 
-* Pack may:
+### `RunKeyTask(level)`
 
-  * open then immediately close
-  * fail to register as open
+Main entry point for executing a key task.
+
+Flow:
+
+1. Acquire task
+2. Move container to top-level slot
+3. Travel to zone (if needed)
+4. Execute task steps
+5. Combine items
+6. Collect reward
+7. Return items
+
+---
+
+### `DoCombine(key_task_details)`
+
+Handles combining key fragments.
+
+Steps:
+
+1. Find container
+2. Determine pack slot
+3. Open pack window
+4. Add required items
+5. Execute combine
+6. Handle reward
+
+---
+
+### `EnsurePackWindowOpen(pack)`
+
+Ensures the correct pack window is open.
+
+Key behavior:
+
+* Uses `/itemnotify packX rightmouseup`
+* Verifies `mq.TLO.Window('PackX').Open()`
+* Handles timing issues with polling
+* Avoids unreliable name-based itemnotify
+
+---
+
+### `AcceptRewardSelection()`
+
+Handles reward window interaction.
+
+Improved behavior:
+
+* Polls for reward window instead of single wait
+* Clicks reward button immediately when detected
+* Verifies window closes
+* Falls back to cursor sweep if no window appears
+
+---
+
+## Important Fixes Implemented
+
+### 1. Pack Opening Reliability
+
+**Problem:**
+
+* Pack required multiple attempts or failed to open
+
+**Fix:**
+
+* Use only:
+
+  ```
+  /itemnotify packX rightmouseup
+  ```
+* Removed name-based itemnotify (unreliable)
+* Added state verification using:
+
+  ```lua
+  mq.TLO.Window('PackX').Open()
+  ```
+
+---
+
+### 2. Reward Window Not Being Clicked
+
+**Problem:**
+
+* Rewards piled up (not collected)
 
 **Cause:**
 
-* UI interference (casting, plugins, lag)
-
----
-
-### 3. Jungle Key Behavior
-
-* If items already exist:
-
-  * Script may still attempt travel
-* Combine step may fail if pack not detected properly
-
----
-
-### 4. External Interference
-
-Plugins like:
-
-* RGMercs spell memming
-* Navigation interruptions
-
-can break timing-sensitive steps like:
-
-* combine
-* reward acceptance
-
----
-
-## Troubleshooting
-
-### Config Errors
-
-**Error:**
-
-```
-Error loading file ... AnniversaryTower_<name>.ini
-```
+* Reward window appeared after detection window
+* Script missed timing
 
 **Fix:**
-Create folder manually:
 
-```
-C:\MQNext\Config\AnniversaryTower
-```
+* Replaced single wait with polling loop
+* Click happens as soon as window appears
 
 ---
 
-### Combine Fails
+### 3. False “No Reward Window” Logs
 
-Check:
+**Problem:**
 
-* Container is in top-level inventory
-* Pack window is not blocked
-* No casting / memming during combine
+* Misleading logs even when reward was collected
+
+**Fix:**
+
+* Logging adjusted to reflect fallback behavior
+* Cursor sweep added as backup
 
 ---
 
-### Rewards Not Collected
+### 4. Unnecessary Zone Travel
 
-Manually test:
+**Problem:**
 
+* Script traveled to zone even when items already collected
+
+**Fix:**
+
+* Detect if:
+
+  * All combine items are present
+  * Task is already on final step
+* Skip travel and go directly to combine
+
+---
+
+### 5. Combine Timing Stability
+
+**Problem:**
+
+* Combine attempted during unstable UI state
+
+**Fix:**
+
+* Added delays and inventory stabilization
+* Ensured container is properly moved and settled
+
+---
+
+## Known Limitations
+
+### External Interference
+
+Other automation (e.g. RGMercs) may:
+
+* Interrupt UI
+* Close windows
+* Delay actions
+
+### Reward Window Variability
+
+* Not all combines trigger `RewardSelectionWnd`
+* Some rewards go directly to cursor/inventory
+
+### UI Timing Sensitivity
+
+* MQ + EQ UI is asynchronous
+* Requires delays and polling
+
+---
+
+## Debugging Tips
+
+### Check Pack Open State
+
+```lua
+mq.TLO.Window('Pack9').Open()
 ```
+
+### Verify Reward Window
+
+```lua
+mq.TLO.Window('RewardSelectionWnd').Open()
+```
+
+### Manual Test Commands
+
+```text
+/itemnotify pack9 rightmouseup
 /notify RewardSelectionWnd RewardSelectionChooseButton leftmouseup
 ```
 
-If that works:
-→ timing issue in script
-
 ---
 
-## Development Notes
+## Best Practices
 
-* Uses `mq.TLO` heavily for state checks
-
-* UI detection relies on:
-
-  * `Window('PackX').Open()`
-  * `Window('RewardSelectionWnd').Open()`
-
-* Timing-sensitive sections:
-
-  * Combine
-  * Reward selection
-  * Navigation transitions
-
----
-
-## Recommendations
-
-* Avoid heavy casting during combines
-* Keep inventory organized
-* Ensure containers are in top-level slots
-* Use consistent automation framework (don’t mix systems heavily)
-
----
-
-## Future Improvements
-
-* Reliable reward queue handling
-* Event-driven combine detection
-* Better UI state validation
-* Reduced retry spam
-* Safer pack opening logic
+* Avoid excessive retry loops (fix state instead)
+* Always verify UI state after actions
+* Prefer polling over fixed delays
+* Do not rely solely on UI windows for success
+* Validate results via inventory when possible
 
 ---
 
 ## Summary
 
-`AnniversaryTower` is a full automation system for EQ Anniversary Tower content.
+This script automates the full lifecycle of tower key tasks, including:
 
-It works well when:
+* Task acquisition
+* Objective execution
+* Reliable combining
+* Robust reward handling
 
-* UI is stable
-* plugins are not interfering
-* timing is respected
+Recent fixes significantly improved:
 
-Most issues are **timing/UI detection related**, not logic errors.
+* Pack opening reliability
+* Reward collection accuracy
+* Task flow efficiency
+
+---
+
+## Future Improvements
+
+* Direct validation of repaired key after combine
+* Better handling of external script interference
+* UI abstraction for different layouts
+* Event-based detection instead of polling
 
 ---
 
-## License
+## Author Notes
 
-Personal use / modification.
+This script evolved through debugging real-world edge cases involving:
+
+* MQ timing behavior
+* EverQuest UI quirks
+* Interaction with other automation systems
+
+It prioritizes reliability over minimalism and includes safeguards for inconsistent UI behavior.
 
 ---
+

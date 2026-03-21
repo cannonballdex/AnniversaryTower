@@ -1216,8 +1216,8 @@ local function Initialize()
 
     mq.bind('/tower', bind_command)
 
-    if (mq.TLO.CWTN ~= nil) then
-        mq.cmdf('/%s mode 7', mq.TLO.CWTN.Command())
+    if (mq.TLO.Plugin('CWTN') == 'Active') then
+        mq.cmdf('/%s mode 7', mq.TLO.Me.Class.ShortName())
     end
 
     -- Unfortunate hack unless we move all mission methods there as well.  "It's fine"

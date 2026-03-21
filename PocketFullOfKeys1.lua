@@ -3,10 +3,14 @@
     PocketFullOfKeys1lua - Hands in all 6 repaired keys to the clockwork artificer for the quest "Pocket Full of Keys Part I"
 --]]
 local mq = require('mq')
+local mq_utils = require('utils.mq_utils')
 
-local WAIT_TIME = 1000
+local ZONE_NAME = 'anniversarytower'
 local NPC_NAME = 'a clockwork artificer'
 local REQUEST_PHRASE = 'first six keys'   -- change to "active set" if needed
+local WAIT_TIME = 1000
+local ZONE_WAIT = 60000
+local waitFor = mq_utils.waitFor
 
 local KEYS = {
     'Repaired Key of Sand',
@@ -19,6 +23,13 @@ local KEYS = {
 
 local function log(msg, ...)
     printf('[HandKeys] ' .. msg, ...)
+    if mq.TLO.Lua.Script('overseer').Status() == "RUNNING" then
+        mq.cmd('/rgl pause')
+    end
+end
+
+local function inZone(zoneName)
+    return mq.TLO.Zone.ShortName() == zoneName
 end
 
 local function haveTarget()
@@ -41,6 +52,25 @@ local function openInventory()
         mq.TLO.Window('InventoryWindow').DoOpen()
         mq.delay(1000)
     end
+end
+
+local function travelToZone(zoneName)
+    if inZone(zoneName) then
+        return true
+    end
+
+    log('Traveling to %s', zoneName)
+    mq_utils.TravelTo(zoneName)
+
+    local ok = waitFor(ZONE_WAIT, function()
+        return inZone(zoneName)
+    end)
+
+    if not ok then
+        log('Failed to reach zone: %s', zoneName)
+    end
+
+    return ok
 end
 
 local function targetNPC()
@@ -101,7 +131,6 @@ local function pickUpOne(itemName)
 end
 
 local function giveItem()
-    mq.cmd('/target npc "' .. NPC_NAME .. '"')
     mq.cmd('/click left target')
     mq.delay(WAIT_TIME, cursorEmpty)
 end
@@ -125,7 +154,7 @@ end
 local function handIn(itemName)
     if not haveItem(itemName) then
         log('Skipping missing key: %s', itemName)
-        return 'missing'
+        return true
     end
 
     log('Giving: %s', itemName)
@@ -143,9 +172,9 @@ local function handIn(itemName)
 end
 
 local function run()
-    local handedInCount = 0
-    local missingCount = 0
-
+    if not travelToZone(ZONE_NAME) then
+        return
+    end
     openInventory()
 
     if not targetNPC() then return end
@@ -153,19 +182,15 @@ local function run()
     activateTask()
 
     for _, key in ipairs(KEYS) do
-        local result = handIn(key)
-
-        if result == true then
-            handedInCount = handedInCount + 1
-        elseif result == 'missing' then
-            missingCount = missingCount + 1
+        if not handIn(key) then
+            log('Stopped on %s', key)
+            return
         end
     end
 
-    if handedInCount > 0 then
-        log('Handed in %d key(s). Missing/skipped %d key(s).', handedInCount, missingCount)
-    else
-        log('No keys were handed in. Missing/skipped %d key(s).', missingCount)
+    log('All keys handed in successfully')
+    if mq.TLO.Lua.Script('overseer').Status() == "RUNNING" then
+        mq.cmd('/rgl unpause')
     end
 end
 
