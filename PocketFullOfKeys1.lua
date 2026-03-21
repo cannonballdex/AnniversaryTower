@@ -10,7 +10,6 @@ local NPC_NAME = 'a clockwork artificer'
 local REQUEST_PHRASE = 'first six keys'   -- change to "active set" if needed
 local WAIT_TIME = 1000
 local ZONE_WAIT = 60000
-local waitFor = mq_utils.waitFor
 
 local KEYS = {
     'Repaired Key of Sand',
@@ -26,6 +25,20 @@ local function log(msg, ...)
     if mq.TLO.Lua.Script('overseer').Status() == "RUNNING" then
         mq.cmd('/rgl pause')
     end
+end
+
+local function waitFor(timeoutMs, predicate, intervalMs)
+    intervalMs = intervalMs or 50
+    local start = mq.gettime()
+
+    while (mq.gettime() - start) < timeoutMs do
+        if predicate() then
+            return true
+        end
+        mq.delay(intervalMs)
+    end
+
+    return false
 end
 
 local function inZone(zoneName)
