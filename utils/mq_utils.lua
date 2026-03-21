@@ -869,8 +869,7 @@ function actions.PickupInventoryItemById(item_id)
 
     if slot2 == 0 then
 
-        -- Workaround for UI interference
-        if GLOBAL_STANDARD_UI == 1 then mq.delay(2000) end
+        mq.delay(2000)
 
         -- Not in bag
         local slot1 = mq.TLO.FindItem(l_id).ItemSlot()
@@ -883,8 +882,7 @@ function actions.PickupInventoryItemById(item_id)
     else
         mq.delay(1)
         local pack = mq.TLO.FindItem(l_id).ItemSlot() - 22
-        -- Workaround for UI interference
-        if GLOBAL_STANDARD_UI == 1 then mq.delay(2000) end
+        mq.delay(2000)
 
         mq.delay(1)
 

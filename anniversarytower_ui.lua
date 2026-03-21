@@ -141,14 +141,14 @@ local function getPocketPartState(keyList, achievementID)
 end
 
 local function isPocketScriptRunning(scriptName)
-    local shortName = getShortScriptName(scriptName)
-    local script = mq.TLO.Lua.Script(shortName)
-    if script == nil then
-        return false
+    local script = mq.TLO.Lua.Script(scriptName)
+    if script() ~= nil and script.Status() == 'RUNNING' then
+        return true
     end
 
-    local pid = script.PID()
-    return pid ~= nil and pid > 0
+    local shortName = getShortScriptName(scriptName)
+    script = mq.TLO.Lua.Script(shortName)
+    return script() ~= nil and script.Status() == 'RUNNING'
 end
 
 local function runPocketScript(scriptName)
@@ -166,7 +166,7 @@ local function stopPocketScript(scriptName)
         return
     end
 
-    mq.cmd('/lua stop ' .. getShortScriptName(scriptName))
+    mq.cmdf('/lua stop %s', scriptName)
 end
 
 function actions.InitializeUi(showUi)
@@ -332,12 +332,12 @@ function RenderMissionKeysTab()
 
     local flags = bit32.bor(ImGuiTableFlags.Resizable, ImGuiTableFlags.RowBg, ImGuiTableFlags.BordersOuter)
     if ImGui.BeginTable('##tableKeys', 6, flags, 0, TEXT_BASE_HEIGHT, 0.0) then
-        ImGui.TableSetupColumn('Selected', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 0)
-        ImGui.TableSetupColumn('Action', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 0)
-        ImGui.TableSetupColumn('Ordinal', bit32.bor(ImGuiTableColumnFlags.PreferSortAscending, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
-        ImGui.TableSetupColumn('Key', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
-        ImGui.TableSetupColumn('AccessType', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
-        ImGui.TableSetupColumn('Key', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
+        ImGui.TableSetupColumn('Selected', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 0)
+        ImGui.TableSetupColumn('Action', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 0)
+        ImGui.TableSetupColumn('Ordinal', bit32.bor(ImGuiTableColumnFlags.PreferSortAscending, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
+        ImGui.TableSetupColumn('Key', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
+        ImGui.TableSetupColumn('AccessType', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
+        ImGui.TableSetupColumn('Key', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
 
         ImGui.TableNextRow()
         ImGui.TableNextColumn()
@@ -452,13 +452,13 @@ function RenderAllMissionsTab()
 
         local flags = bit32.bor(ImGuiTableFlags.Resizable, ImGuiTableFlags.RowBg, ImGuiTableFlags.BordersOuter)
         if ImGui.BeginTable('##tableMissions', 7, flags, 0, TEXT_BASE_HEIGHT, 0.0) then
-            ImGui.TableSetupColumn('Selected', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 0)
-            ImGui.TableSetupColumn('Action', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 0)
-            ImGui.TableSetupColumn('Ordinal', bit32.bor(ImGuiTableColumnFlags.PreferSortAscending, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
-            ImGui.TableSetupColumn('Mission', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
-            ImGui.TableSetupColumn('Status', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
-            ImGui.TableSetupColumn('AccessType', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
-            ImGui.TableSetupColumn('Key', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthAuto), -1.0, 1)
+            ImGui.TableSetupColumn('Selected', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 0)
+            ImGui.TableSetupColumn('Action', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 0)
+            ImGui.TableSetupColumn('Ordinal', bit32.bor(ImGuiTableColumnFlags.PreferSortAscending, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
+            ImGui.TableSetupColumn('Mission', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
+            ImGui.TableSetupColumn('Status', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
+            ImGui.TableSetupColumn('AccessType', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
+            ImGui.TableSetupColumn('Key', bit32.bor(ImGuiTableColumnFlags.NoSort, ImGuiTableColumnFlags.WidthStretch), -1.0, 1)
 
             ImGui.TableNextRow()
             ImGui.TableNextColumn()
@@ -615,14 +615,8 @@ function RenderPocketKeysTab()
 
         ImGui.SameLine()
 
-        if not running then
-            ImGui.BeginDisabled()
-        end
         if ImGui.Button('Stop##' .. scriptName) then
             stopPocketScript(scriptName)
-        end
-        if not running then
-            ImGui.EndDisabled()
         end
 
         drawPocketKeyList(keyList)
