@@ -835,7 +835,7 @@ local function AcquireTask(level)
         logger.info('Rest of group traveling to \at%s', mission.mission_zone)
 
         if (Settings.general.UseOptimizedNavigation) then
-            mq_utils.send_others_message('/lua run missions_anniversarytower/other_actions runto '..mission.level)
+            mq_utils.send_others_message('/lua run anniversarytower/other_actions runto '..mission.level)
             mq_utils.send_others_message('/tower_o runto '..mission.level)
             tower.MoveToLevel(1)
         else
@@ -956,6 +956,7 @@ local function RunMission(level)
     ClearStatusMessage()
 
     SetCurrentProcess('Running Mission: ' .. mission.name)
+    mq.cmd('/dgga /nav ini opendoors 0')
     local current_task = AcquireTask(level)
     local time_since_request = 0
     if (actions.TestMode_NotRequestingMissions == false) then
@@ -977,7 +978,7 @@ local function RunMission(level)
         SetStatusMessage(string.format('Waiting for instance generation. (%.f) second(s)', time_to_wait / 1000))
 
         if (Settings.general.UseOptimizedNavigation == true) then
-            mq_utils.send_others_message('/lua run missions_anniversarytower/other_actions zoneto '..mission.level)
+            mq_utils.send_others_message('/lua run anniversarytower/other_actions zoneto '..mission.level)
             mq_utils.send_others_message('/tower_o zoneto '..mission.level)
             tower.MoveToLevel(mission.level)
         else
@@ -986,7 +987,7 @@ local function RunMission(level)
                 local mage = mq_utils.GetGroupMemberByClass('MAG')
                 if (mage ~= nil) then
                     logger.info('Asking Mage to COTH me.')
-                    mq_utils.send_individual_message(mage.Name(), '/lua run missions_anniversarytower/coth '..mq.TLO.Me.ID())
+                    mq_utils.send_individual_message(mage.Name(), '/lua run anniversarytower/coth '..mq.TLO.Me.ID())
                 end
             end
         end
@@ -997,7 +998,7 @@ local function RunMission(level)
 
     if (mq.TLO.Zone.ShortName() == mission.mission_zone and mq.TLO.Group.AnyoneMissing() == false) then
     else
-        mq_utils.send_others_message('/lua run missions_anniversarytower/other_actions zoneto '..mission.level)
+        mq_utils.send_others_message('/lua run anniversarytower/other_actions zoneto '..mission.level)
         mq_utils.send_others_message('/tower_o zoneto '..mission.level)
         if (mq.TLO.Zone.ShortName() ~= mission.mission_zone) then
             tower.MoveToLevel(mission.level)
@@ -1069,7 +1070,7 @@ local function RunMission(level)
     mission.selected = false
 
     RefreshAll()
-
+    mq.cmd('/dgga /nav ini opendoors 1')
     return true
 end
 
@@ -1078,7 +1079,7 @@ local function RunToLevel(level)
 end
 
 local function RunToLevelGroup(level)
-    mq_utils.send_group_message('/lua run missions_anniversarytower/tower_travel '..level)
+    mq_utils.send_group_message('/lua run anniversarytower/tower_travel '..level)
 end
 
 local function RequestMission(level)

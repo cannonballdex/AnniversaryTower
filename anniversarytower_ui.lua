@@ -579,6 +579,18 @@ function RenderPocketKeysTab()
         local status = part.status
         local hasAny = part.hasAny
         local completed = part.completed
+        local achievement = mq.TLO.Achievement(achievementID)
+local achievementName = 'nil'
+local achievementCompleted = 'nil'
+
+if achievement() ~= nil then
+    achievementName = tostring(achievement.Name())
+    achievementCompleted = tostring(achievement.Completed())
+end
+
+ImGui.Text(string.format('Achievement ID: %s', tostring(achievementID)))
+ImGui.Text(string.format('Achievement Name: %s', achievementName))
+ImGui.Text(string.format('Achievement Completed Raw: %s', achievementCompleted))
         local running = isPocketScriptRunning(scriptName)
         local canHandIn = part.canHandIn
 
