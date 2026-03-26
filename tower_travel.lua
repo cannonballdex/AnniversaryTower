@@ -1,4 +1,3 @@
-
 -- AnniversaryTower\coth
 -- Called by a mage to COTH the group main assist
 -- (Currently, assuming that is the script caller.)
@@ -399,7 +398,10 @@ function actions.GetMyCurrentLevel()
     local last_distance = 9999999
     for i = 1, 13 do
         local distance = GetDistanceToLevel(i)
-        if distance == nil then return -1 end
+        if distance == nil then
+            logger.warning('GetMyCurrentLevel: distance nil for level %s', i)
+            return nil
+        end
         if (distance > last_distance) then
             return last_level
         end
@@ -413,7 +415,20 @@ end
 
 local function GetMyCurrentLevelDetails()
     local current_level = actions.GetMyCurrentLevel()
-    return actions.GetLevelDetails(current_level)
+
+    if not current_level then
+        logger.error('Failed to determine current level')
+        return nil
+    end
+
+    local details = actions.GetLevelDetails(current_level)
+
+    if not details then
+        logger.error('No level details found for level %s', current_level)
+        return nil
+    end
+
+    return details
 end
 
 local function MoveToHigherLevel(my_level_details, target_level)
@@ -479,6 +494,11 @@ function actions.MoveToLevel(target_level)
     end
 
     local my_level_details = GetMyCurrentLevelDetails()
+
+    if not my_level_details then
+        logger.error('MoveToLevel aborted: could not determine current level')
+        return
+    end
 
     -- We're already on the level, just nudge near door, if one.
     if (my_level_details.level == target_level) then

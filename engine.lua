@@ -591,6 +591,9 @@ local function Mission_OasisOfSwamps(task)
         function() mq_utils.MoveToSpawnName('Amzy the Ravenous') end,
         function() mq_utils.KillAllOnXtarget() end,
         function() mq_utils.MoveToSpawnName('Amzy the Ravenous') end,
+        function() mq_utils.MoveToSpawnName('a hulking ancap') end,
+        function() mq_utils.KillAllOnXtarget() end,
+        function() mq_utils.MoveToSpawnName('a shambling knork') end,
         function() mq_utils.KillAllOnXtarget() end,
         function() mq_utils.MoveToSpawnName('Amzy the Ravenous') end,
         function() mq_utils.KillAllOnXtarget() end,
@@ -609,7 +612,7 @@ local function Mission_OasisOfFear(task)
         if (mq.TLO.Target.ID() ~= spawn_id) then return false end
 
         -- There's a delay in seeing the mobs HP.
-        if ( mq.TLO.Target.PctHPs() == 1) then
+        if ( mq.TLO.Target.PctHPs() >= 1) then
             mq.delay(1000, function() return mq.TLO.Target.PctHPs() ~= 1 end)
         end
 
@@ -730,68 +733,214 @@ local function Mission_OasisOfVoid(task)
 end
 
 local function Mission_OasisOfDragons(task)
-    local move_to_level = function(level, move_into_room)
-        local level_details = tower.GetLevelDetails(level)
 
-        ::restart_running::
-        logger.debug('\ag Running to door %s', level)
-        mq.cmdf("/nav door id %s", level_details.switch_id)
-        while(mq.TLO.Navigation.Active()) do
+    local function move_to_floor_if_needed(level)
+        local my_level = tower.GetMyCurrentLevel()
+
+        if (my_level ~= nil and my_level ~= level) then
+            logger.info('Moving from level %s to level %s', tostring(my_level), tostring(level))
+            tower.MoveToLevel(level)
+        end
+    end
+
+    local function is_up(name)
+        return mq.TLO.SpawnCount(name)() > 0
+    end
+
+    local function kill_named(level, name)
+        move_to_floor_if_needed(level)
+
+        local attempts = 0
+
+        ::kill_loop::
+        attempts = attempts + 1
+
+        ::nav_to_spawn::
+        mq.cmd('/squelch /target clear')
+        logger.debug('Navigating to %s', name)
+        mq.cmdf('/nav spawn "%s"', name)
+        mq.delay(250)
+
+        while (mq.TLO.Navigation.Active()) do
             if (mq.TLO.Me.XTarget(1).ID() > 0) then
-                logger.debug('\ay XTarget seen - going to kill')
+                logger.debug('Aggro while moving to %s', name)
                 mq_utils.KillAllOnXtarget()
-                logger.debug('\ag Targets cleared')
-                goto restart_running
+                goto nav_to_spawn
             end
-
             mq.delay(50)
         end
 
-        logger.debug('At door, waiting for group to catch up.')
-        --mq_utils.WaitForGroupToCatchUp()
-        mq_utils.KillAllOnXtarget()
-        if (move_into_room) then
-            logger.debug('Running into the room')
-            mq_utils.MoveToLoc('-110 67 '..mq.TLO.Me.Z())
+        mq.cmd('/squelch /target clear')
+        mq.cmdf('/target npc "%s"', name)
+        mq.delay(500)
+
+        if (mq.TLO.Target.ID() > 0) then
+            logger.info('Attacking %s', name)
+            mq.cmd('/say attack')
+            mq_utils.KillAllOnXtarget()
+            mq.delay(500)
+
+            if (mq.TLO.SpawnCount(name)() > 0) then
+                logger.debug('%s still alive, retrying', name)
+                goto kill_loop
+            end
+
+            logger.info('Confirmed dead: %s', name)
+            return true
         end
 
-        logger.info('Moved to level: %s', level)
+        if (attempts < 5) then
+            logger.debug('Could not target %s, retrying (%d/5)', name, attempts)
+            mq.delay(1000)
+            goto kill_loop
+        end
+
+        logger.warning('Failed to find %s after %d attempts', name, attempts)
+        return false
     end
 
-    local kill = function(level, spawn_name)
-        local my_level = tower.GetMyCurrentLevel()
-        if (my_level ~= level) then
-            tower.MoveToLevel(level)
+    local function test_kill_giant(spawn_id)
+        if (spawn_id == nil or spawn_id == 0) then
+            return false
         end
 
-        mq.cmd('/squelch /target clear')
-        --mq_utils.KillAllBaddiesIfUp(spawn_name, nil, nil, nil, nil, 10)
-        mq_utils.KillAllBaddiesIfUp(spawn_name, nil, nil, nil, 10)
-        mq_utils.KillAllOnXtarget()
-        mq.cmd('/say attack')
+        mq_utils.MoveToAndTargetId(spawn_id)
+        mq.delay(1000, function() return mq.TLO.Target.ID() == spawn_id end)
+        if (mq.TLO.Target.ID() ~= spawn_id) then
+            return false
+        end
 
+        if (mq.TLO.Me.Combat() == false) then
+            mq.cmd('/attack on')
+        end
+
+        logger.debug('Testing giant by checking HP drop. Target=%s HP=%s',
+            tostring(mq.TLO.Target.CleanName()), tostring(mq.TLO.Target.PctHPs()))
+
+        mq.delay(3000, function()
+            return mq.TLO.Target.ID() == spawn_id and mq.TLO.Target.PctHPs() < 100
+        end)
+
+        if (mq.TLO.Target.ID() ~= spawn_id or mq.TLO.Target.PctHPs() == 100) then
+            return false
+        end
+
+        logger.info('Giant engaged: %s (%s)', mq.TLO.Target.CleanName(), spawn_id)
+        mq_utils.KillAllOnXtarget()
+        return true
+    end
+
+    local function kill_next_giant()
+        move_to_floor_if_needed(13)
+
+        if (mq.TLO.Target.CleanName() ~= nil and string.find(string.lower(mq.TLO.Target.CleanName()), 'giant') ~= nil) then
+            logger.debug('Finishing current giant target first')
+            if (test_kill_giant(mq.TLO.Target.ID()) == true) then
+                return true
+            end
+        end
+
+        logger.debug('Walking giant spawns...')
+
+        local targets = {}
+        local giant_count = mq.TLO.SpawnCount('giant')()
+
+        for i = 1, giant_count do
+            local mob = mq.TLO.NearestSpawn(i, 'npc giant')
+            if (mob ~= nil and mob.ID() ~= nil) then
+                table.insert(targets, {
+                    id = mob.ID(),
+                    name = mob.Name(),
+                    distance = mob.Distance() or 999999,
+                })
+            end
+        end
+
+        table.sort(targets, function(a, b)
+            return a.distance < b.distance
+        end)
+
+        for _, mob in ipairs(targets) do
+            logger.info('Moving to giant %s (%s)', tostring(mob.name), tostring(mob.id))
+
+            if (test_kill_giant(mob.id) == true) then
+                logger.debug('Killed engaged giant, clearing xtarget')
+                mq_utils.KillAllOnXtarget()
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local function process_dragon_step(_objective)
+        local giant_count = mq.TLO.SpawnCount('giant')()
+        local nagafen_count = mq.TLO.SpawnCount('Nagafen')()
+
+        logger.info('DEBUG: giant_count=%s nagafen=%s', tostring(giant_count), tostring(nagafen_count))
+
+        if (mq.TLO.Me.XTarget() > 0) then
+            mq_utils.KillAllOnXtarget()
+            return
+        end
+
+        -- Simple strict priority order:
+        if (is_up('thaumaturgist')) then
+            kill_named(4, 'thaumaturgist')
+            return
+        end
+
+        if (is_up('behemoth')) then
+            kill_named(7, 'behemoth')
+            return
+        end
+
+        if (is_up('behemoth')) then
+            kill_named(10, 'behemoth')
+            return
+        end
+
+        if (is_up('Amzy')) then
+            kill_named(10, 'Amzy')
+            return
+        end
+
+        if (giant_count > 0) then
+            logger.info('Giant phase active (count=%s)', giant_count)
+
+            if (kill_next_giant()) then
+                return
+            end
+
+            logger.warning('Giants still alive but could not engage one - retrying')
+            mq.delay(1000)
+            return
+        end
+
+        if (nagafen_count > 0) then
+            kill_named(13, 'Nagafen')
+            return
+        end
+
+        mq.delay(500)
     end
 
     local steps = {
-        function() move_to_level(4, true) end,
-        function() kill(4, 'an orc thaumaturgist') end,
-        function() move_to_level(7, true) end,
-        function() kill(7, 'an obsolete behemoth') end,
-        function() move_to_level(10, true) end,
-        function() kill(10, 'Amzy the Ravenous') end,
-        function()
-            move_to_level(13, false)
-            mq_utils.MoveToSpawnName('Echo of Lord Nagafen')
-        end,
-        function() mq.cmd('/squelch /target clear') mq_utils.KillAllOnXtarget() end,
-        function() mq.cmd('/squelch /target clear') mq_utils.KillAllOnXtarget() end,
-        function() mq.cmd('/squelch /target clear') mq_utils.KillAllOnXtarget() end,
-        function(o) mq_utils.PauseUntilObjectiveComplete(o) end,
+        function() return kill_named(4, 'thaumaturgist') end,
+        function() return kill_named(7, 'behemoth') end,
+        function() return kill_named(10, 'behemoth') end,
+        function() return kill_named(10, 'Amzy') end,
+        function(o) process_dragon_step(o) end,
+        function(o) process_dragon_step(o) end,
+        function(o) process_dragon_step(o) end,
+        function(o) process_dragon_step(o) end,
+        function(o) process_dragon_step(o) end,
+        function(o) process_dragon_step(o) end,
+        function(o) mq.delay(500) end,
     }
 
     return DoSteps(task, steps)
 end
-
 
 local function GetLevelForDoor(door_id)
     if (door_id <= 2) then
@@ -1062,7 +1211,7 @@ local function RunMission(level)
     else
         mq.delay(15000)
     end
-
+    mq.cmd('/dgga /nav ini opendoors 1')
     logger.info('Dropping quest')
     mq.cmd('/kickp t')
     mq_utils.click_confirmation_yes()
@@ -1070,7 +1219,7 @@ local function RunMission(level)
     mission.selected = false
 
     RefreshAll()
-    mq.cmd('/dgga /nav ini opendoors 1')
+    
     return true
 end
 
