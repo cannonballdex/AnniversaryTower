@@ -20,8 +20,8 @@ local in_tower_zone = false
 
 local actions = {}
 
-local PART1_SCRIPT = 'anniversarytower/PocketFullOfKeys1'
-local PART2_SCRIPT = 'anniversarytower/PocketFullOfKeys2'
+local PART1_SCRIPT = 'AnniversaryTower/PocketFullOfKeys1'
+local PART2_SCRIPT = 'AnniversaryTower/PocketFullOfKeys2'
 
 local PART1_ACHIEVEMENT_ID = 200168
 local PART2_ACHIEVEMENT_ID = 200169
