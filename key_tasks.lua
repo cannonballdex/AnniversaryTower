@@ -685,6 +685,10 @@ local function travel_to_tower()
 
         if (zueria.ID() == nil) then goto finish_travel end
 
+        -- remember the exact item location so we do not pick up a different slide later
+        local zueria_slot = zueria.ItemSlot()
+        local zueria_slot2 = zueria.ItemSlot2()
+
         -- /relocate cannot change the item type when in keyring
         if (zueria.ID() ~= 146385 and zueria.ItemSlot() < 23) then
             logger.warning('Zueria Slide not set to North Ro.  Cannot change while in keyring. Not using.')
@@ -694,14 +698,22 @@ local function travel_to_tower()
         logger.info('Initiating /relocate nro for Zuria Slide usage.')
         mq.cmd('/relocate nro')
         mq.delay(10000, function() return mq.TLO.Me.CastTimeLeft() > 0 end)
+
         if (zueria.ID() ~= 146385) then
-            zueria = mq.TLO.FindItem(146385)
+            -- reacquire the same item from the same slot, not by global FindItem()
+            if (zueria_slot2 ~= nil and zueria_slot2 >= 0) then
+                zueria = mq.TLO.InvSlot(zueria_slot).Item.Item(zueria_slot2 + 1)
+            else
+                zueria = mq.TLO.InvSlot(zueria_slot).Item
+            end
+
             if (zueria.ID() ~= 146385) then
                 -- WHERE are we going?!
                 logger.warning('Incorrect Zuria Slide situation.')
                 return
             end
         end
+
         mq.delay(zueria.CastTime()+100, function() return (mq.TLO.Me.CastTimeLeft() == 0 or zueria.TimerReady() > 0) end)
         logger.info('Clicked Zueria slide... waiting for zone.')
         mq_utils.WaitForZone()
